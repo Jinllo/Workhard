@@ -8,8 +8,30 @@ Las migraciones SQL viven en `supabase/migrations/` y se versionan en git. Nunca
 |---|---|
 | `migrations/20261014000000_modelo_inicial.sql` | Las 8 tablas del modelo ER, vista `plan_saldo` y RLS activado en todas |
 | `migrations/20261014000100_auditoria.sql` | HU-4: tabla `auditoria` y trigger `auditar()` en las tablas de negocio |
+| `migrations/20261014010000_permisos_rls.sql` | HU-3: permisos por rol y por usuario (políticas RLS) |
+| `functions/gestionar-personal/` | HU-2: Edge Function que crea, desactiva y reactiva cuentas del personal |
 | `seed.sql` | HU-5: catálogo de planes, 10 alumnos ficticios y planes asignados |
-| `tests/db.test.ts` | Pruebas de las migraciones y del seed con PGlite (corren con `npm test`) |
+| `tests/` | Pruebas de migraciones, seed, permisos y de la función, con PGlite (corren con `npm test`) |
+
+## Primer administrador (una sola vez)
+
+Las cuentas se crean desde la pantalla **Personal** de la app, pero esa pantalla exige ser administrador. El primero se crea a mano:
+
+1. Supabase → **Authentication → Users → Add user → Create new user**: correo, contraseña y marcar **Auto Confirm User**.
+2. Supabase → **SQL Editor**:
+
+   ```sql
+   insert into public.personal (id, nombre, email, rol)
+   select id, 'Nombre Apellido', email, 'admin'
+   from auth.users
+   where email = 'tu-correo@ejemplo.com';
+   ```
+
+## Desplegar la función de cuentas
+
+```bash
+npx supabase functions deploy gestionar-personal
+```
 
 ## Convención
 

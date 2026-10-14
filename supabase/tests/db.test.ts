@@ -1,56 +1,20 @@
 // Pruebas de la base de datos con PGlite (Postgres real compilado a WASM).
 // Aplican las migraciones y el seed sobre una base vacía que imita lo mínimo
 // de Supabase (esquema auth, auth.uid() y roles anon/authenticated).
-import { PGlite } from '@electric-sql/pglite'
-import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import type { PGlite } from '@electric-sql/pglite'
 import { beforeAll, describe, expect, it } from 'vitest'
-
-const DIR = join(import.meta.dirname, '..')
-const MIGRACIONES = readdirSync(join(DIR, 'migrations'))
-  .filter((f) => f.endsWith('.sql'))
-  .sort()
-  .map((f) => readFileSync(join(DIR, 'migrations', f), 'utf8'))
-const SEED = readFileSync(join(DIR, 'seed.sql'), 'utf8')
-
-const SUPABASE_STUB = `
-  create role anon nologin;
-  create role authenticated nologin;
-  create schema auth;
-  create table auth.users (id uuid primary key);
-  create function auth.uid() returns uuid language sql stable as
-    $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-  grant usage on schema public, auth to anon, authenticated;
-  grant execute on function auth.uid() to anon, authenticated;
-  -- Igual que Supabase: los roles de la API reciben privilegios por defecto
-  -- y el RLS es lo que realmente restringe.
-  alter default privileges in schema public grant all on tables to anon, authenticated;
-  alter default privileges in schema public grant all on sequences to anon, authenticated;
-`
+import { SEED, crearBase, como, num as numEn } from './helpers'
 
 const TABLAS = ['personal', 'alumno', 'tipo_plan', 'plan_alumno', 'plantilla_bloque', 'clase', 'reserva', 'auditoria']
 const USUARIO = '11111111-1111-4111-8111-111111111111'
 
 let db: PGlite
 
-async function num(sql: string): Promise<number> {
-  const r = await db.query<{ n: number }>(sql)
-  return Number(r.rows[0].n)
-}
-
-async function comoUsuarioApi<T>(fn: () => Promise<T>): Promise<T> {
-  await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${USUARIO}', false);`)
-  try {
-    return await fn()
-  } finally {
-    await db.exec(`reset role; select set_config('request.jwt.claim.sub', '', false);`)
-  }
-}
+const num = (sql: string) => numEn(db, sql)
+const comoUsuarioApi = <T>(fn: () => Promise<T>) => como(db, USUARIO, fn)
 
 beforeAll(async () => {
-  db = new PGlite()
-  await db.exec(SUPABASE_STUB)
-  for (const sql of MIGRACIONES) await db.exec(sql)
+  db = await crearBase()
 })
 
 describe('modelo inicial', () => {
@@ -63,7 +27,7 @@ describe('modelo inicial', () => {
     expect(r.rows.every((x) => x.relrowsecurity)).toBe(true)
   })
 
-  it('sin políticas, un usuario de la API no ve ni escribe alumnos', async () => {
+  it('un usuario sin cuenta de personal no ve ni escribe alumnos', async () => {
     await db.exec(`insert into public.alumno (nombre) values ('Visible solo para postgres')`)
     const visibles = await comoUsuarioApi(() => num('select count(*)::int as n from public.alumno'))
     expect(visibles).toBe(0)

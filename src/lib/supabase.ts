@@ -18,6 +18,32 @@ function setup(): SupabaseSetup {
 
 export const supabaseSetup = setup()
 
+/** Cliente de Supabase. Solo se usa en pantallas que se muestran cuando la configuración es válida. */
+export function supabase(): SupabaseClient {
+  if (!supabaseSetup.ok) throw new Error(supabaseSetup.error)
+  return supabaseSetup.client
+}
+
+/** Llama una Edge Function y devuelve el mensaje de error del servidor, si lo hay. */
+export async function invocarFuncion<T>(
+  nombre: string,
+  body: Record<string, unknown>,
+): Promise<{ data: T | null; error: string | null }> {
+  const { data, error } = await supabase().functions.invoke<T>(nombre, { body })
+  if (!error) return { data, error: null }
+  let mensaje = 'No se pudo completar la operación.'
+  const contexto = (error as { context?: unknown }).context
+  if (contexto instanceof Response) {
+    try {
+      const cuerpo = (await contexto.json()) as { error?: string }
+      if (cuerpo.error) mensaje = cuerpo.error
+    } catch {
+      /* respuesta sin JSON */
+    }
+  }
+  return { data: null, error: mensaje }
+}
+
 /** Verifica que el proyecto de Supabase responde con la clave pública configurada. */
 export async function checkSupabase(env: SupabaseEnv): Promise<{ ok: boolean; detail: string }> {
   try {
